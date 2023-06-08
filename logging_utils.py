@@ -1,4 +1,7 @@
+import gymnasium as gym
 import numpy as np
+from stable_baselines3.dqn import DQN
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
 import matplotlib.pyplot as plt
@@ -32,7 +35,8 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
         if self.n_calls % self.check_freq == 0:
 
           # Retrieve training reward
-          x, y = ts2xy(load_results(self.log_dir), 'timesteps')
+          df = load_results(self.log_dir)
+          x, y = ts2xy(df, 'timesteps')
           if len(x) > 0:
               # Mean training reward over the last 100 episodes
               mean_reward = np.mean(y[-100:])
@@ -62,21 +66,49 @@ def moving_average(values, window):
     return np.convolve(values, weights, 'valid')
 
 
-def plot_results(log_folder, title='Learning Curve'):
+def plot_results(log_folders, title='Learning Curve'):
     """
     plot the results
 
     :param log_folder: (str) the save location of the results to plot
     :param title: (str) the title of the task to plot
     """
-    x, y = ts2xy(load_results(log_folder), 'timesteps')
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
+    for log_folder,tag in log_folders:
+        x, y = ts2xy(load_results(log_folder), 'timesteps')
+        y = moving_average(y, window=50)
+        # Truncate x
+        x = x[len(x) - len(y):]
 
-    fig = plt.figure(title)
-    plt.plot(x, y)
+        fig = plt.figure(title)
+        plt.plot(x, y,label=f"{tag}")
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Rewards')
+    plt.legend(loc='upper left', fontsize='small')
     plt.title(title + " Smoothed")
     plt.show()
+
+
+if __name__ == "__main__":
+    log_dir = "/tmp/gym/DQN/CartPole"
+    os.makedirs(log_dir, exist_ok=True)
+
+    env = gym.make("CartPole-v1",  # name of your gym environement
+                   render_mode=None,  # "human"
+                   )
+    env = Monitor(env, log_dir,info_keywords=("learning_rate","gamma"))
+
+    callback = SaveOnBestTrainingRewardCallback(check_freq=100, log_dir=log_dir)
+    model = DQN("MlpPolicy",  # type de réseaux de neuronnes
+                env,  # passe l'environement
+                verbose=1,  # mode verbeux ( affiche plus d'information )
+                learning_rate=0.0001,  # un paramètre que tu devras tester
+                gamma=0.99,  # un paramètre que tu devras tester
+                )
+    trained_model = model.learn(
+        total_timesteps=100000,  # temps d'entrainement
+        log_interval=4,  # intervalle de remonter des données
+        callback=callback,  # Utiliser pour stocker des métriques
+
+    )
+    log_dir = "/tmp/gym/DQN/CartPole"
+    plot_results(log_dir)
